@@ -4,6 +4,7 @@ description = "Pure Rust osu! Standard mode game logic engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 [dependencies]
 serde.workspace = true
