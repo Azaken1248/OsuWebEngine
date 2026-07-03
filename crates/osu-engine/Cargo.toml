@@ -1,0 +1,14 @@
+[package]
+name = "osu-engine"
+description = "Pure Rust osu! Standard mode game logic engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+lzma-rs.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+serde_json.workspace = true

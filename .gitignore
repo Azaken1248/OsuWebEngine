@@ -1,0 +1,40 @@
+# ── Documentation & References (tracked separately) ─────────────
+docs/
+references/
+
+# ── Rust / Cargo ────────────────────────────────────────────────
+/target/
+**/target/
+Cargo.lock
+!Cargo.lock
+
+# ── WASM build output ──────────────────────────────────────────
+pkg/
+**/pkg/
+
+# ── Node.js ────────────────────────────────────────────────────
+node_modules/
+npm/osu_engine_wasm*
+!npm/package.json
+!npm/tsconfig.json
+
+# ── Fuzz artifacts ─────────────────────────────────────────────
+**/fuzz/artifacts/
+**/fuzz/corpus/
+
+# ── IDE ────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── OS ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Coverage & reports ─────────────────────────────────────────
+tarpaulin-report.html
+*.profraw
+*.profdata
+lcov.info

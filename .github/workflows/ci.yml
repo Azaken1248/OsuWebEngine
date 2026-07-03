@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    name: Check / Lint / Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Unit tests
+        run: cargo test --workspace
+
+      - name: WASM build
+        run: |
+          cargo install wasm-pack --locked
+          wasm-pack build crates/osu-engine-wasm --target web --release
+
+      - name: Binary size check
+        run: |
+          WASM_FILE="crates/osu-engine-wasm/pkg/osu_engine_wasm_bg.wasm"
+          if [ -f "$WASM_FILE" ]; then
+            RAW_SIZE=$(stat --printf="%s" "$WASM_FILE")
+            GZ_SIZE=$(gzip -9 -c "$WASM_FILE" | wc -c)
+            echo "WASM raw: $RAW_SIZE bytes"
+            echo "WASM gzipped: $GZ_SIZE bytes"
+            if [ "$GZ_SIZE" -gt 819200 ]; then
+              echo "::warning::WASM binary exceeds 800 KB gzipped ($GZ_SIZE bytes)"
+            fi
+          fi
+
+      - name: Supply chain check
+        run: |
+          cargo install cargo-deny --locked
+          cargo deny check

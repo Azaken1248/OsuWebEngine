@@ -1,0 +1,24 @@
+[package]
+name = "osu-engine-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+osu-engine = { path = ".." }
+
+[[bin]]
+name = "fuzz_osr_parse"
+path = "fuzz_targets/fuzz_osr_parse.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_osu_parse"
+path = "fuzz_targets/fuzz_osu_parse.rs"
+test = false
+doc = false

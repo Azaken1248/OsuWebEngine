@@ -1,0 +1,24 @@
+[package]
+name = "osu-engine-wasm"
+description = "WebAssembly bindings for osu-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+osu-engine = { path = "../osu-engine" }
+wasm-bindgen.workspace = true
+js-sys.workspace = true
+serde.workspace = true
+serde-wasm-bindgen.workspace = true
+
+[dev-dependencies]
+wasm-bindgen-test = "=0.3.50"
+
+[package.metadata.wasm-pack.profile.release]
+# Disabled: bundled wasm-opt doesn't support bulk memory ops from Rust 1.96+.
+# TODO(L7): Re-enable with system wasm-opt ≥ 116 or --enable-bulk-memory.
+wasm-opt = false

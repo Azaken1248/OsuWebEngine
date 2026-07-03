@@ -1,0 +1,14 @@
+[package]
+name = "osu-engine-bench"
+description = "Criterion benchmarks for osu-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bench]]
+name = "engine_benchmarks"
+harness = false
+
+[dependencies]
+osu-engine = { path = "../osu-engine" }
+criterion.workspace = true
