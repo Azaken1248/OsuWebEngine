@@ -10,33 +10,43 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  check:
-    name: Check / Lint / Test
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-unknown-unknown
           components: clippy, rustfmt
-
       - uses: Swatinem/rust-cache@v2
-
       - name: Format check
         run: cargo fmt --all -- --check
-
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Unit tests
         run: cargo test --workspace
 
-      - name: WASM build
-        run: |
-          cargo install wasm-pack --locked
-          wasm-pack build crates/osu-engine-wasm --target web --release
-
+  wasm:
+    name: WASM Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+      - name: Build WASM
+        run: wasm-pack build crates/osu-engine-wasm --target web --release
       - name: Binary size check
         run: |
           WASM_FILE="crates/osu-engine-wasm/pkg/osu_engine_wasm_bg.wasm"
@@ -46,11 +56,19 @@ jobs:
             echo "WASM raw: $RAW_SIZE bytes"
             echo "WASM gzipped: $GZ_SIZE bytes"
             if [ "$GZ_SIZE" -gt 819200 ]; then
-              echo "::warning::WASM binary exceeds 800 KB gzipped ($GZ_SIZE bytes)"
+              echo "::error::WASM binary exceeds 800 KB gzipped ($GZ_SIZE bytes)"
+              exit 1
             fi
           fi
 
-      - name: Supply chain check
-        run: |
-          cargo install cargo-deny --locked
-          cargo deny check
+  security:
+    name: Supply Chain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+      - name: Audit dependencies
+        run: cargo deny check
