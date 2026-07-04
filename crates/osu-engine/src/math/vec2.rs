@@ -77,6 +77,22 @@ impl Vec2 {
     pub fn dot(self, other: Self) -> f64 {
         self.x * other.x + self.y * other.y
     }
+
+    /// Squared length — avoids sqrt for flatness and distance checks.
+    #[inline]
+    pub fn length_sq(self) -> f64 {
+        self.x * self.x + self.y * self.y
+    }
+
+    /// Approximate equality within epsilon.
+    ///
+    /// Only available in test builds. Production geometry should use
+    /// explicit comparisons with domain-specific tolerances.
+    #[cfg(test)]
+    #[inline]
+    pub fn approx_eq(self, other: Self, epsilon: f64) -> bool {
+        (self.x - other.x).abs() < epsilon && (self.y - other.y).abs() < epsilon
+    }
 }
 
 impl Add for Vec2 {
