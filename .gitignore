@@ -1,5 +1,7 @@
-# ── Documentation & References (tracked separately) ─────────────
-docs/
+# ── Vendored reference repositories ─────────────────────────────
+# Cloned locally, never committed (~126 MB). See Developer Guide §8 for the
+# clone commands. `docs/` used to be ignored alongside these; it is not a
+# vendored artifact but the project's specification, and is now tracked.
 references/
 
 # ── Rust / Cargo ────────────────────────────────────────────────
