@@ -1,0 +1,13 @@
+osu file format v4
+
+[General]
+Mode: 0
+
+[Difficulty]
+OverallDifficulty:5
+
+[TimingPoints]
+1000,500
+
+[HitObjects]
+256,192,1000,1,0

@@ -1,35 +1,67 @@
 # Test Fixtures
 
-This directory contains `.osu` beatmap files and `.osr` replay files
-used for unit tests, integration tests, and differential testing.
+`.osu` beatmap and `.osr` replay files used by unit, integration, and (later)
+differential tests.
 
-## Directory Structure
+**All fixtures are synthetic** — every field is fabricated. Do not commit
+copyrighted beatmap or replay content.
 
 ```
 fixtures/
 ├── beatmaps/       .osu beatmap files
-├── replays/        .osr replay files matching the beatmaps
+├── replays/        .osr replay files
 └── README.md       this file
 ```
 
-## Adding Fixtures
+## Beatmaps (`beatmaps/`)
 
-1. Place `.osu` file in `beatmaps/`
-2. Place matching `.osr` file in `replays/`
-3. Add a corresponding test case in the relevant module
-4. Commit the files (they are small enough for git)
+| File | Exercises |
+|---|---|
+| `normal.osu` | Full v14 map: all four curve types, red + green timing points, circle / slider / spinner |
+| `early_v4.osu` | Format v4 → the +24 ms `EARLY_VERSION_TIMING_OFFSET`, on hit objects *and* timing points |
+| `collinear_p.osu` | A collinear `P` curve → parse-time downgrade to `Linear` (osu!stable special-case) |
 
-## Fixture Selection Criteria
+## Replays (`replays/`)
 
-Fixtures should cover:
-- Simple circles-only maps (baseline)
-- Slider-heavy maps (curve math validation)
-- Spinner test maps
-- Stacking edge cases (overlapping objects, combo resets)
-- Marathon-length maps (performance testing)
-- Edge cases: extreme AR/CS/OD, 2B-style overlaps, snake sliders
+Generated, not hand-assembled. `.osr` is binary, so committing opaque hex would
+be unreviewable and would silently drift from the format. Regenerate with:
 
-## Note
+```bash
+cargo run -p osu-engine --example gen_osr_fixture -- tests/fixtures/replays
+```
 
-All fixtures must be from publicly available maps or be
-purpose-created test maps. Do not commit copyrighted content.
+| File | Version | Exercises |
+|---|---|---|
+| `nomod_fc.osr` | 20230326 | Baseline; stable's two `(256, -500)` sentinel frames and the `-12345` seed frame |
+| `dthr_fc.osr` | 20230326 | Mod bitmask decoding (HD\|HR\|DT = 88) |
+| `old_format_2013.osr` | 20130101 | Score ID stored as an **`i32`** (the 20121008–20140720 window) |
+| `ancient_2011.osr` | 20111001 | **No score ID field at all** (pre-20121008) |
+
+The last two earn their place: TDD §2.1 describes the score ID as a fixed
+`i64`, which misparses every replay in the `i32` window and reads past the end
+of anything older. These fixtures pin the real behavior
+(`LegacyScoreDecoder.cs` L107-110).
+
+## Fuzz corpus
+
+`crates/osu-engine/fuzz/corpus/` is gitignored — it grows into thousands of
+generated inputs. Reseed it from these fixtures before a run:
+
+```bash
+cp tests/fixtures/beatmaps/*.osu crates/osu-engine/fuzz/corpus/fuzz_osu_parse/
+cp tests/fixtures/replays/*.osr  crates/osu-engine/fuzz/corpus/fuzz_osr_parse/
+```
+
+Then, from `crates/osu-engine/` — the fuzz crate is its own workspace and
+requires nightly:
+
+```bash
+cargo +nightly fuzz run fuzz_osr_parse -- -max_total_time=600
+cargo +nightly fuzz run fuzz_osu_parse -- -max_total_time=600
+```
+
+## Future fixture coverage
+
+Still needed for later layers: stacking edge cases (overlapping objects, combo
+resets), marathon-length maps for performance, extreme AR/CS/OD, 2B-style
+overlaps, snake sliders.

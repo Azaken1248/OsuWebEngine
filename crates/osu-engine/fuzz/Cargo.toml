@@ -4,6 +4,12 @@ version = "0.0.0"
 publish = false
 edition = "2021"
 
+# Deliberately NOT a member of the root workspace. cargo-fuzz builds this crate
+# with its own RUSTFLAGS (sanitizer coverage, ASan) which must not leak into the
+# main build, and libfuzzer-sys requires a nightly toolchain. An empty
+# [workspace] table makes this its own workspace root.
+[workspace]
+
 [package.metadata]
 cargo-fuzz = true
 

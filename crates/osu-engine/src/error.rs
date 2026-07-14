@@ -36,6 +36,31 @@ pub enum EngineError {
     /// File format version is not supported.
     UnsupportedVersion { version: i32 },
 
+    /// A ULEB128-encoded length used more continuation bytes than can fit
+    /// in the target integer. Guards against a crafted `.osr` spinning the
+    /// decode loop or wrapping the accumulator.
+    UlebOverflow { context: &'static str },
+
+    /// An osu-string declared a length beyond the accepted maximum.
+    StringTooLong { context: &'static str, len: usize },
+
+    /// An osu-string began with a byte other than `0x00` (empty) or
+    /// `0x0B` (string follows).
+    InvalidStringMarker { context: &'static str, marker: u8 },
+
+    /// A required `.osu` section was absent.
+    MissingSection { section: &'static str },
+
+    /// A numeric field parsed successfully but fell outside the range lazer
+    /// accepts (e.g. a coordinate beyond `MAX_COORDINATE_VALUE`).
+    ///
+    /// Source: `Parsing.cs` — lazer throws rather than clamping.
+    ValueOutOfRange {
+        field: &'static str,
+        value: f64,
+        limit: f64,
+    },
+
     // ── Decompression errors (D-*) ─────────────────────────────────────
     /// LZMA decompression failed.
     LzmaDecompressionFailed { source: String },
@@ -95,7 +120,12 @@ impl EngineError {
             | Self::UnexpectedEof { .. }
             | Self::InvalidUtf8 { .. }
             | Self::MalformedField { .. }
-            | Self::UnsupportedVersion { .. } => "parse",
+            | Self::UnsupportedVersion { .. }
+            | Self::UlebOverflow { .. }
+            | Self::StringTooLong { .. }
+            | Self::InvalidStringMarker { .. }
+            | Self::MissingSection { .. }
+            | Self::ValueOutOfRange { .. } => "parse",
 
             Self::LzmaDecompressionFailed { .. }
             | Self::DecompressionOutputTooLarge { .. }
@@ -126,6 +156,11 @@ impl EngineError {
             Self::InvalidUtf8 { .. } => "P-003",
             Self::MalformedField { .. } => "P-004",
             Self::UnsupportedVersion { .. } => "P-005",
+            Self::UlebOverflow { .. } => "P-006",
+            Self::StringTooLong { .. } => "P-007",
+            Self::InvalidStringMarker { .. } => "P-008",
+            Self::MissingSection { .. } => "P-009",
+            Self::ValueOutOfRange { .. } => "P-010",
             Self::LzmaDecompressionFailed { .. } => "D-001",
             Self::DecompressionOutputTooLarge { .. } => "D-002",
             Self::DecompressionTimeout { .. } => "D-003",
@@ -173,6 +208,33 @@ impl std::fmt::Display for EngineError {
             }
             Self::UnsupportedVersion { version } => {
                 write!(f, "[P-005] Unsupported format version: {}", version)
+            }
+            Self::UlebOverflow { context } => {
+                write!(f, "[P-006] ULEB128 length overflow in {}", context)
+            }
+            Self::StringTooLong { context, len } => {
+                write!(f, "[P-007] String in {} too long: {} bytes", context, len)
+            }
+            Self::InvalidStringMarker { context, marker } => {
+                write!(
+                    f,
+                    "[P-008] Invalid osu-string marker {:#04x} in {}",
+                    marker, context
+                )
+            }
+            Self::MissingSection { section } => {
+                write!(f, "[P-009] Missing required section [{}]", section)
+            }
+            Self::ValueOutOfRange {
+                field,
+                value,
+                limit,
+            } => {
+                write!(
+                    f,
+                    "[P-010] Field '{}' value {} exceeds limit {}",
+                    field, value, limit
+                )
             }
             Self::LzmaDecompressionFailed { source } => {
                 write!(f, "[D-001] LZMA decompression failed: {}", source)

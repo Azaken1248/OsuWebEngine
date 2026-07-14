@@ -1,0 +1,13 @@
+osu file format v14
+
+[General]
+Mode: 0
+
+[Difficulty]
+OverallDifficulty:7
+
+[TimingPoints]
+1000,400,4,2,0,100,1,0
+
+[HitObjects]
+0,0,1000,2,0,P|50:0|100:0,1,100
