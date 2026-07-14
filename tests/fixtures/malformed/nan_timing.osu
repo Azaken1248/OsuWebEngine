@@ -1,0 +1,18 @@
+osu file format v14
+
+[General]
+Mode: 0
+
+[Difficulty]
+HPDrainRate:NaN
+CircleSize:Infinity
+OverallDifficulty:-Infinity
+ApproachRate:nan
+SliderMultiplier:NaN
+SliderTickRate:1
+
+[TimingPoints]
+NaN,NaN,4,2,0,100,1,0
+
+[HitObjects]
+256,192,NaN,1,0,0:0:0:0:
