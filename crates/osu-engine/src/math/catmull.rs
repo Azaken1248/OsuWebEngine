@@ -45,34 +45,44 @@ fn catmull_point(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, t: f64) -> Vec2 {
 
 /// Flattens a Catmull-Rom spline into a polyline.
 ///
-/// Generates `CATMULL_DETAIL` samples per segment. Handles missing
-/// endpoints by duplication (start) or extrapolation (end).
+/// Emits **two points per step** — `t = c/detail` and `t = (c+1)/detail` —
+/// producing `CATMULL_DETAIL * 2` points per segment with duplicated
+/// interior vertices. This looks redundant, and it is: the duplicates
+/// create zero-length segments. But it is exactly what lazer does, and
+/// the Catmull optimisation pass (`slider_path::optimise_catmull`) keys
+/// its knot detection off this doubled index layout. Collapsing it here
+/// would silently break that pass.
 ///
-/// Ref: danser `processCatmull()` + `ApproximateCatmullRom()`
+/// Endpoint handling:
+/// - Missing start: `v1 = v2` (duplicate first control point)
+/// - Missing end:   `v4 = v3 + v3 - v2` (extrapolate)
+///
+/// Source: `PathApproximator.cs` L150–169 (`CatmullToPiecewiseLinear`).
 pub fn flatten(points: &[Vec2]) -> Vec<Vec2> {
     if points.len() < 2 {
         return points.to_vec();
     }
 
     let segment_count = points.len() - 1;
-    let mut output = Vec::with_capacity(segment_count * CATMULL_DETAIL + 1);
+    let mut output = Vec::with_capacity(segment_count * CATMULL_DETAIL * 2);
 
     for i in 0..segment_count {
-        // Resolve surrounding control points with endpoint handling
-        let p0 = if i > 0 { points[i - 1] } else { points[i] };
-        let p1 = points[i];
-        let p2 = points[i + 1];
-        let p3 = if i + 2 < points.len() {
+        // Resolve surrounding control points with endpoint handling.
+        // `v3` is always in range here because the loop stops at len-1.
+        let v1 = if i > 0 { points[i - 1] } else { points[i] };
+        let v2 = points[i];
+        let v3 = points[i + 1];
+        let v4 = if i + 2 < points.len() {
             points[i + 2]
         } else {
-            // Extrapolate: p3 = p2 + (p2 - p1)
-            p2 + (p2 - p1)
+            v3 + v3 - v2
         };
 
-        // Generate samples for this segment
-        for j in 0..=CATMULL_DETAIL {
-            let t = j as f64 / CATMULL_DETAIL as f64;
-            output.push(catmull_point(p0, p1, p2, p3, t));
+        for c in 0..CATMULL_DETAIL {
+            let t0 = c as f64 / CATMULL_DETAIL as f64;
+            let t1 = (c + 1) as f64 / CATMULL_DETAIL as f64;
+            output.push(catmull_point(v1, v2, v3, v4, t0));
+            output.push(catmull_point(v1, v2, v3, v4, t1));
         }
     }
 
@@ -110,9 +120,34 @@ mod tests {
         let points = [Vec2::new(0.0, 0.0), Vec2::new(100.0, 100.0)];
         let result = flatten(&points);
 
-        assert_eq!(result.len(), CATMULL_DETAIL + 1);
+        // lazer emits two points per step: `(n-1) * catmull_detail * 2`.
+        // Source: `PathApproximator.cs` L152.
+        assert_eq!(result.len(), CATMULL_DETAIL * 2);
         assert!(result[0].approx_eq(points[0], 1e-10));
         assert!(result.last().unwrap().approx_eq(points[1], 1e-10));
+    }
+
+    /// The doubled emission must produce duplicated interior vertices —
+    /// `optimise_catmull` depends on this layout to find knot boundaries.
+    #[test]
+    fn flatten_emits_duplicated_interior_vertices() {
+        let points = [
+            Vec2::new(0.0, 0.0),
+            Vec2::new(100.0, 200.0),
+            Vec2::new(200.0, 0.0),
+        ];
+        let result = flatten(&points);
+
+        assert_eq!(result.len(), 2 * CATMULL_DETAIL * 2);
+
+        // Within a segment, result[2c+1] (t=(c+1)/d) and result[2c+2]
+        // (t=(c+1)/d of the next step) are the same point.
+        assert!(
+            result[1].approx_eq(result[2], 1e-10),
+            "expected duplicated vertex pair, got {:?} and {:?}",
+            result[1],
+            result[2]
+        );
     }
 
     #[test]

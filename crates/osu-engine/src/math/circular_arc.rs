@@ -26,7 +26,7 @@
 //! - `danser-go/multicurve.go` L301-313 — `processPerfect()`
 
 use super::bezier;
-use super::constants::{ARC_TOLERANCE, COLLINEAR_EPSILON};
+use super::constants::{ARC_TOLERANCE, COLLINEAR_EPSILON, MAX_ARC_POINTS};
 use super::vec2::Vec2;
 
 /// A circle defined by 3 points, with arc traversal parameters.
@@ -124,49 +124,66 @@ pub fn is_straight_line(a: Vec2, b: Vec2, c: Vec2) -> bool {
     cross < COLLINEAR_EPSILON
 }
 
-/// Flattens a perfect arc to a polyline with adaptive segment count.
+/// Number of points required to approximate this arc within `ARC_TOLERANCE`.
 ///
-/// Handles all fallback cases:
-/// - `> 3` control points → Bézier fallback
-/// - `< 3` control points → linear
-/// - Collinear → linear
+/// `2 * radius <= tolerance` is a pathological case (an arc shorter than
+/// the tolerance itself), handled by falling back to a 2-point line.
 ///
-/// Segment count for valid arcs:
-/// `max(2, ceil(totalAngle / (2 * acos(1 - ARC_TOLERANCE / radius))))`
+/// The `as usize` cast saturates (NaN → 0, +∞ → usize::MAX), so a
+/// degenerate radius yields a value that trips the `MAX_ARC_POINTS`
+/// guard in `flatten()` rather than overflowing.
 ///
-/// Ref: danser `ApproximateCircularArcLazer()` + `processPerfect()`
+/// Source: `PathApproximator.cs` L186.
+fn amount_points(arc: &CircularArc) -> usize {
+    if 2.0 * arc.radius <= ARC_TOLERANCE {
+        return 2;
+    }
+
+    let angle_step = 2.0 * (1.0 - ARC_TOLERANCE / arc.radius).acos();
+    2_usize.max((arc.total_angle / angle_step).ceil() as usize)
+}
+
+/// Flattens a perfect arc to a polyline with adaptive point count.
+///
+/// Every fallback below routes to the Bézier approximation, **not** to a
+/// straight line. lazer's `calculateSubPath` `break`s out of the
+/// `PerfectCurve` case on each of these conditions, and the fall-through
+/// at the end of the switch is `BSplineToPiecewiseLinear` — which, for a
+/// legacy slider with no explicit degree, reduces to a plain Bézier.
+///
+/// Fallback cases:
+/// - control point count != 3          (`SliderPath.cs` L345)
+/// - arc is invalid / collinear         (`SliderPath.cs` L351, `PathApproximator.cs` L178)
+/// - arc needs >= `MAX_ARC_POINTS`      (`SliderPath.cs` L359)
+///
+/// Point count for valid arcs:
+/// `max(2, ceil(thetaRange / (2 * acos(1 - ARC_TOLERANCE / radius))))`
+///
+/// Source: `PathApproximator.cs` L175–199 (`CircularArcToPiecewiseLinear`)
+///         + `SliderPath.cs` L343–369 (guards).
 pub fn flatten(points: &[Vec2]) -> Vec<Vec2> {
-    if points.len() > 3 {
-        // > 3 points: fall back to Bézier
+    // lazer only treats an exactly-3-point control set as a perfect curve.
+    if points.len() != 3 {
         return bezier::split_and_flatten(points);
     }
 
-    if points.len() < 3 {
-        // < 3 points: treat as linear
-        return points.to_vec();
+    let arc = match CircularArc::new(points[0], points[1], points[2]) {
+        Some(arc) => arc,
+        // Invalid (collinear) arc → Bézier, not linear.
+        None => return bezier::split_and_flatten(points),
+    };
+
+    let amount = amount_points(&arc);
+
+    // Pathological arcs fall back to a numerically stable Bézier. This is
+    // also what bounds the allocation below on adversarial input.
+    if amount >= MAX_ARC_POINTS {
+        return bezier::split_and_flatten(points);
     }
 
-    let a = points[0];
-    let b = points[1];
-    let c = points[2];
-
-    // Try to construct the arc; collinear → linear fallback
-    let arc = match CircularArc::new(a, b, c) {
-        Some(arc) => arc,
-        None => return vec![a, b, c], // collinear: linear fallback
-    };
-
-    // Adaptive segment count (matches danser ApproximateCircularArcLazer)
-    let segments = if 2.0 * arc.radius > ARC_TOLERANCE {
-        let angle_step = 2.0 * (1.0 - ARC_TOLERANCE / arc.radius).acos();
-        2_usize.max((arc.total_angle / angle_step).ceil() as usize)
-    } else {
-        2
-    };
-
-    let mut output = Vec::with_capacity(segments);
-    for i in 0..segments {
-        let fract = i as f64 / (segments - 1) as f64;
+    let mut output = Vec::with_capacity(amount);
+    for i in 0..amount {
+        let fract = i as f64 / (amount - 1) as f64;
         output.push(arc.point_at(fract));
     }
 
@@ -176,6 +193,68 @@ pub fn flatten(points: &[Vec2]) -> Vec<Vec2> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An invalid (collinear) arc must fall back to **Bézier**, not linear.
+    /// Source: `SliderPath.cs` L351 → switch fall-through.
+    #[test]
+    fn collinear_arc_falls_back_to_bezier() {
+        let points = [
+            Vec2::new(0.0, 0.0),
+            Vec2::new(50.0, 0.0),
+            Vec2::new(100.0, 0.0),
+        ];
+
+        assert_eq!(
+            flatten(&points),
+            bezier::split_and_flatten(&points),
+            "collinear arc must route to the Bézier fallback"
+        );
+    }
+
+    /// A non-3-point control set is not a perfect curve — Bézier fallback.
+    /// Source: `SliderPath.cs` L345.
+    #[test]
+    fn non_three_point_arc_falls_back_to_bezier() {
+        let two = [Vec2::new(0.0, 0.0), Vec2::new(100.0, 0.0)];
+        assert_eq!(flatten(&two), bezier::split_and_flatten(&two));
+
+        let four = [
+            Vec2::new(0.0, 0.0),
+            Vec2::new(50.0, 50.0),
+            Vec2::new(100.0, 0.0),
+            Vec2::new(150.0, 50.0),
+        ];
+        assert_eq!(flatten(&four), bezier::split_and_flatten(&four));
+    }
+
+    /// An arc requiring >= MAX_ARC_POINTS must fall back to Bézier rather
+    /// than allocating an unbounded point buffer.
+    ///
+    /// This is the guard that stops a crafted `.osu` from forcing a huge
+    /// allocation. Source: `SliderPath.cs` L359.
+    #[test]
+    fn pathological_arc_falls_back_to_bezier() {
+        // A circle of radius 200_000 traversed over ~3 radians needs roughly
+        // theta * sqrt(r / arc_tolerance) / 2 ~= 1500 points — over the limit.
+        let r = 200_000.0_f64;
+        let at = |theta: f64| Vec2::new(r * theta.cos(), r * theta.sin());
+        let points = [at(0.0), at(1.5), at(3.0)];
+
+        // Sanity: this really would exceed the cap via the arc path.
+        let arc = CircularArc::new(points[0], points[1], points[2])
+            .expect("three points on a circle form a valid arc");
+        assert!(
+            amount_points(&arc) >= MAX_ARC_POINTS,
+            "test fixture no longer exceeds the cap ({} points)",
+            amount_points(&arc)
+        );
+
+        assert_eq!(
+            flatten(&points),
+            bezier::split_and_flatten(&points),
+            "arc over the point cap must route to the Bézier fallback"
+        );
+    }
 
     #[test]
     fn collinear_points_detected() {
