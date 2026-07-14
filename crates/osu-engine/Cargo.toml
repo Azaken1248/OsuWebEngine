@@ -12,4 +12,5 @@ lzma-rs.workspace = true
 
 [dev-dependencies]
 pretty_assertions.workspace = true
+proptest.workspace = true
 serde_json.workspace = true
